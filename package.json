@@ -2,8 +2,12 @@
   "name": "koinrokka-dsh-plugins",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r test"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
+    "ci": "pnpm install --frozen-lockfile && pnpm build && pnpm typecheck && pnpm test"
   }
 }

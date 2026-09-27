@@ -78,6 +78,47 @@ async function connectUntilOpen(url: string, attempts = 20): Promise<WebSocket> 
   throw new Error(`could not connect to ${url}: ${last?.url ?? 'no attempt'}`)
 }
 
+const PORT2 = 48702
+
+test('a newer authorized connection evicts the older one', async () => {
+  const { ctx, dispose } = mockContext()
+  apply(ctx as never, { host: '127.0.0.1', port: PORT2, token: TOKEN })
+
+  const first = await connectUntilOpen(`ws://127.0.0.1:${PORT2}/?token=${TOKEN}`)
+  const firstClosed = once<number>(first, 'close')
+
+  const second = await connectUntilOpen(`ws://127.0.0.1:${PORT2}/?token=${TOKEN}`)
+  const firstCode = await Promise.race([
+    firstClosed,
+    new Promise<number>((_, reject) => setTimeout(() => reject(new Error('older connection was not evicted')), 2000)),
+  ])
+  assert.equal(firstCode, 1000, 'evicted connection closes cleanly')
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  assert.equal(second.readyState, WebSocket.OPEN, 'newer connection stays open')
+
+  second.terminate()
+  await dispose()
+})
+
+test('shutdown closes its connection; the bridge keeps serving new ones', async () => {
+  const { ctx, dispose } = mockContext()
+  apply(ctx as never, { host: '127.0.0.1', port: PORT, token: TOKEN })
+
+  const first = await connectUntilOpen(`ws://127.0.0.1:${PORT}/?token=${TOKEN}`)
+  const closed = once<number>(first, 'close')
+  const ack = new Promise<unknown>((resolve) => first.on('message', (d) => resolve(JSON.parse(d.toString()))))
+  first.send(JSON.stringify({ jsonrpc: '2.0', id: 'sd', method: 'shutdown', params: {} }))
+  const response = (await ack) as { id: string; result: unknown }
+  assert.equal(response.id, 'sd', 'shutdown is answered')
+  assert.equal(await closed, 1000, 'connection closes cleanly')
+
+  const next = await connectUntilOpen(`ws://127.0.0.1:${PORT}/?token=${TOKEN}`)
+  assert.equal(next.readyState, WebSocket.OPEN, 'a fresh connection is still accepted')
+  next.terminate()
+
+  await dispose()
+})
+
 test('plugin serves auth: rejects wrong token, accepts right one', async () => {
   const { ctx, dispose } = mockContext()
   apply(ctx as never, { host: '127.0.0.1', port: PORT, token: TOKEN })

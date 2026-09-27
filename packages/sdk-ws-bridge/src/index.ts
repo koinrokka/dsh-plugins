@@ -15,7 +15,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol'
 import { HarnessSdkJsonRpcServer } from '@deepseek-ai/dsh-sdk-jsonrpc-server'
-import { WebSocketServer, type WebSocket } from 'ws'
+import { WebSocket, WebSocketServer } from 'ws'
 import { wsToStreams, type WsStreams } from './ws-stream.ts'
 
 export * from './ws-stream.ts'
