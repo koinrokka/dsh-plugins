@@ -1,0 +1,15 @@
+# koinrokka sdk-ws-bridge: SDK JSON-RPC over WebSocket instead of stdio.
+# Applied on top of dsh-base + sdk-app: disables the stdio server row and
+# inserts the bridge. Token comes from KOINROKKA_BRIDGE_TOKEN (fail closed).
+
+- id: sdk-jsonrpc-server
+  disabled: true
+
+- insert:
+    - id: sdk-ws-bridge
+      name: '@koinrokka/dsh-sdk-ws-bridge'
+      inject: [sdkAppStartup, loader]
+      config:
+        host: 0.0.0.0
+        port: 7800
+        token: !!js "process.env.KOINROKKA_BRIDGE_TOKEN"
