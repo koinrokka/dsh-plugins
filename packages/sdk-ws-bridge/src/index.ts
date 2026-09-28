@@ -16,6 +16,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol'
 import { HarnessSdkJsonRpcServer } from '@deepseek-ai/dsh-sdk-jsonrpc-server'
 import { WebSocket, WebSocketServer } from 'ws'
+import { resolve } from 'node:path'
+import { handleWorkspaceRequest } from './workspace.ts'
 import { wsToStreams, type WsStreams } from './ws-stream.ts'
 
 export * from './ws-stream.ts'
@@ -68,6 +70,8 @@ export function apply(ctx: Context, config: BridgeConfig = {}): void {
   }
 
   let active: ActiveConnection | undefined
+  // 工作区根:默认进程 cwd(容器内 /workspace);initialize 可改写
+  let workspaceRoot = process.cwd()
 
   const settleOf = (record: ActiveConnection): (() => void) => {
     let settled = false
@@ -111,7 +115,14 @@ export function apply(ctx: Context, config: BridgeConfig = {}): void {
 
       transport.onRequest(async (method, params) => {
         // Mirror the stdio server: readiness is the whole plugin tree settling.
-        if (method === 'initialize') await ctx.get('loader')?.await()
+        if (method === 'initialize') {
+          if (typeof params?.cwd === 'string' && params.cwd.length > 0) workspaceRoot = resolve(params.cwd)
+          await ctx.get('loader')?.await()
+        }
+        // koinrokka workspace surface(Phase 3,ADR 0010):文件树/读页/回合 diff
+        if (method.startsWith('workspace/')) {
+          return handleWorkspaceRequest(workspaceRoot, method, params)
+        }
         const result = await server.handleRequest(method, params)
         if (method === 'shutdown') {
           setImmediate((): void => {

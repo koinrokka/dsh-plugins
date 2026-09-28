@@ -1,0 +1,25 @@
+{
+  "name": "@koinrokka/dsh-git-auto",
+  "version": "0.1.0",
+  "description": "koinrokka git auto-layer: auto commit (and push, when a remote is configured) at every turn/end. Never surfaces errors into the session (ADR 0007).",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "node --test --test-timeout=15000 \"test/*.test.ts\""
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.14.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
