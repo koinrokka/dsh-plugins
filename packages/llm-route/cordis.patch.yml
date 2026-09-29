@@ -1,0 +1,9 @@
+# koinrokka llm-route(ADR 0005):sdk 模板树里已有零路由的 llm-pi-ai 条目,
+# 这里按 id 覆盖其 config,挂上目录路由。
+# 凭证走环境变量 ZAI_CODING_CN_API_KEY(pi-ai 的 ambient discovery)。
+# deepseek-official 不在此注册:SDK server 在请求该 provider 时按需挂 DeepSeek 回退。
+
+- id: llm-pi-ai
+  config:
+    providers:
+      zai-coding-cn: {}

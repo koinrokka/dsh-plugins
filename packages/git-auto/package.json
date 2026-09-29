@@ -6,7 +6,8 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
-    "lib"
+    "lib",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "build": "tsdown",
@@ -21,5 +22,10 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   }
 }

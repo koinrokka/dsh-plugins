@@ -1,2 +1,6 @@
 packages:
   - "packages/*"
+allowBuilds:
+  # dsh SDK 传递依赖;与 runtime 镜像内 pnpm-workspace.yaml 的放行清单保持一致
+  '@google/genai': false
+  protobufjs: true

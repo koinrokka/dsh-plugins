@@ -1,0 +1,5 @@
+# koinrokka git-auto(ADR 0007):turn 结束自动 commit/push。失败只记日志,不打断回合。
+
+- insert:
+    - id: git-auto
+      name: '@koinrokka/dsh-git-auto'
