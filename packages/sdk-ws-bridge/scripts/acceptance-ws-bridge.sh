@@ -11,7 +11,14 @@ PORT=7800
 echo "==> [1/4] 单测 + 构建"
 pnpm install --frozen-lockfile >/dev/null
 pnpm build >/dev/null
-pnpm test 2>&1 | grep -E 'ℹ (pass|fail)'
+# node:test 输出格式随管道与否变化(spec 报告器带 ℹ,回落 TAP 报 # ),
+# 两种都要认;测试真失败要大声报,不许靠 grep 静默退出(2026-09-29 跨机验收踩坑)
+TESTLOG=$(mktemp)
+if ! pnpm test >"$TESTLOG" 2>&1; then
+  echo "✗ 单测失败:"; tail -30 "$TESTLOG"; rm -f "$TESTLOG"; exit 1
+fi
+grep -E '(ℹ|#) (pass|fail)' "$TESTLOG" | tail -2
+rm -f "$TESTLOG"
 
 echo "==> [2/4] 准备 profile: $PROFILE"
 if [ ! -d "$HOME/.dsh/profiles/$PROFILE" ]; then
@@ -27,10 +34,23 @@ grep -q 'koinrokka/dsh-sdk-ws-bridge' "$HOME/.dsh/profiles/$PROFILE/package.json
   || { echo "bundle 未装入 profile,见上方输出"; exit 1; }
 
 echo "==> [3/4] 启动 dsh(token=$TOKEN)"
+# 端口预检:7800 上有残留(上次验收的孤儿 dsh)必须大声拒跑,否则四项检查打到
+# 旧进程上,token 对不上只会表现为 initialize 悬挂(2026-09-29 跨机验收踩坑)
+if ss -tln 2>/dev/null | grep -q ":$PORT "; then
+  STALE_PID=$(ss -tlnp 2>/dev/null | grep ":$PORT " | grep -oE 'pid=[0-9]+' | head -1)
+  echo "✗ 端口 $PORT 已被占用(${STALE_PID:-pid 未知};疑似上次验收残留的 dsh 孤儿进程)"
+  echo "  清理:pkill -f 'dsh --profile $PROFILE' 后重放"
+  exit 1
+fi
 DSH_PID=""
-cleanup() { [ -n "$DSH_PID" ] && kill "$DSH_PID" 2>/dev/null || true; }
+# setsid 建新进程组,cleanup 杀整组:npx 只是包装器,只杀它会给真正的 node/dsh
+# 子进程留孤儿,继续占着 7800 毒化下一次验收
+cleanup() {
+  [ -n "$DSH_PID" ] && kill -- "-$DSH_PID" 2>/dev/null || true
+  pkill -f "dsh --profile $PROFILE" 2>/dev/null || true
+}
 trap cleanup EXIT
-KOINROKKA_BRIDGE_TOKEN="$TOKEN" npx -y @deepseek-ai/dsh@latest --profile "$PROFILE" >/dev/null 2>&1 &
+KOINROKKA_BRIDGE_TOKEN="$TOKEN" setsid npx -y @deepseek-ai/dsh@latest --profile "$PROFILE" >/dev/null 2>&1 &
 DSH_PID=$!
 
 for i in $(seq 1 60); do

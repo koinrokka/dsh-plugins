@@ -28,7 +28,12 @@ const report = (name, ok, detail = '') => {
 {
   const ws = new WebSocket(`${url}/?token=${token}`)
   await new Promise((resolve, reject) => { ws.on('open', resolve); ws.on('error', reject) })
-  const nextReply = () => new Promise((resolve) => ws.on('message', (d) => resolve(JSON.parse(d.toString()))))
+  // 连接被关闭而回复未到时必须 reject(2026-09-29:曾无限悬挂成 unsettled top-level
+  // await,验收只打一行 Warning 就静默 FAIL,排查代价极高)
+  const nextReply = () => new Promise((resolve, reject) => {
+    ws.on('message', (d) => resolve(JSON.parse(d.toString())))
+    ws.on('close', (code) => reject(new Error(`connection closed before reply (close=${code})`)))
+  })
 
   ws.send(JSON.stringify({
     jsonrpc: '2.0', id: 'acc-init', method: 'initialize',
