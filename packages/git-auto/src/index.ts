@@ -6,11 +6,15 @@
  * session memory; this plugin never interrupts the user and never builds
  * throwaway branches — one long-lived dev branch per locker.
  *
- * Failures are logged and swallowed: the auto layer must never break a turn.
+ * Failures never break a turn, but they are no longer silent: every sync
+ * attempt writes .koinrokka/git-auto.json into the workspace (ok + reason),
+ * which the web client reads after turn/end to surface a status message.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { spawn } from 'node:child_process'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 export const name = 'git-auto'
 
@@ -36,6 +40,18 @@ export interface SyncResult {
   pushed: boolean
   subject?: string
 }
+
+/** 结果报告:落在工作区 .koinrokka/git-auto.json,web 侧的可见性数据源。 */
+export interface GitAutoReport {
+  ok: boolean
+  at: string
+  committed?: boolean
+  pushed?: boolean
+  subject?: string
+  error?: string
+}
+
+const REPORT_REL = '.koinrokka/git-auto.json'
 
 function git(root: string, args: string[], input?: string): Promise<{ code: number; out: string; err: string }> {
   return new Promise((resolveP) => {
@@ -94,6 +110,39 @@ export async function syncWorkspace(root: string, opts: SyncOptions): Promise<Sy
   return { committed: true, pushed, subject }
 }
 
+/** 报告目录不进自动提交(否则每 turn 必脏);repo 尚未 init 时静默跳过。 */
+async function excludeReportDir(root: string): Promise<void> {
+  const excludePath = join(root, '.git/info/exclude')
+  try {
+    let cur = ''
+    try { cur = await readFile(excludePath, 'utf8') } catch { /* 首次不存在 */ }
+    if (!cur.split('\n').some((l) => l.trim() === '.koinrokka/')) {
+      await mkdir(join(root, '.git/info'), { recursive: true })
+      await writeFile(excludePath, `${cur}${cur.endsWith('\n') || cur === '' ? '' : '\n'}.koinrokka/\n`)
+    }
+  } catch { /* 无仓库/只读盘:报告文件落不了 exclude 就随仓库走,不致命 */ }
+}
+
+/**
+ * 带报告的一次 sync:成败都写入 .koinrokka/git-auto.json,永不抛出。
+ * 可见性 seam(M4):web 在 turn 结束后读该文件,失败插 status 消息。
+ */
+export async function syncWithReport(root: string, opts: SyncOptions): Promise<GitAutoReport> {
+  let report: GitAutoReport
+  try {
+    const r = await syncWorkspace(root, opts)
+    report = { ok: true, at: new Date().toISOString(), ...r }
+  } catch (e) {
+    report = { ok: false, at: new Date().toISOString(), error: e instanceof Error ? e.message : String(e) }
+  }
+  await excludeReportDir(root)
+  try {
+    await mkdir(join(root, '.koinrokka'), { recursive: true })
+    await writeFile(join(root, REPORT_REL), JSON.stringify(report))
+  } catch { /* 报告写不进也不能断 turn */ }
+  return report
+}
+
 export function apply(ctx: Context, config: GitAutoConfig = {}): void {
   const branch = config.branch ?? 'koinrokka'
   const remote = config.remote ?? process.env.KOINROKKA_GIT_REMOTE
@@ -109,13 +158,18 @@ export function apply(ctx: Context, config: GitAutoConfig = {}): void {
     running = true
     dirty = false
     const root = pendingRoot
-    void Promise.resolve(syncWorkspace(root, { branch, remote, name, email }))
+    void Promise.resolve(syncWithReport(root, { branch, remote, name, email }))
       .then((r) => {
-        if (r.committed) ctx.logger?.info?.(`git-auto: ${r.subject}${r.pushed ? ' (pushed)' : ''}`)
+        if (!r.ok) {
+          dirty = true // 下一个 turn 再试;失败已落报告文件,web 会展示
+          ctx.logger?.warn?.(`git-auto sync failed: ${r.error}`)
+        } else if (r.committed) {
+          ctx.logger?.info?.(`git-auto: ${r.subject}${r.pushed ? ' (pushed)' : ''}`)
+        }
       })
       .catch((e) => {
-        dirty = true // 下一个 turn 再试
-        ctx.logger?.warn?.(`git-auto sync failed: ${e instanceof Error ? e.message : String(e)}`)
+        dirty = true // 理论不可达(syncWithReport 不抛),兜底
+        ctx.logger?.warn?.(`git-auto report failed: ${e instanceof Error ? e.message : String(e)}`)
       })
       .finally(() => {
         running = false

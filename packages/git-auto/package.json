@@ -1,6 +1,6 @@
 {
   "name": "@koinrokka/dsh-git-auto",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "koinrokka git auto-layer: auto commit (and push, when a remote is configured) at every turn/end. Never surfaces errors into the session (ADR 0007).",
   "type": "module",
   "main": "lib/index.js",
