@@ -146,9 +146,12 @@ export function apply(ctx: Context, config: BridgeConfig = {}): void {
         if (method.startsWith('workspace/')) {
           return handleWorkspaceRequest(workspaceRoot, method, params)
         }
-        // 审批卡回执(R2):{id, outcome: allowed-once | rejected}
+        // 审批卡回执(R2):{id, outcome: allowed-once | rejected};别的值当未送达
         if (method === 'approval/decide') {
-          const ok = broker.decide(String(params?.id), params?.outcome)
+          const outcome = (params as { outcome?: unknown } | undefined)?.outcome
+          const ok = outcome === 'allowed-once' || outcome === 'rejected'
+            ? broker.decide(String(params?.id), outcome)
+            : false
           return { ok }
         }
         const result = await server.handleRequest(method, params)
