@@ -1,6 +1,6 @@
 {
   "name": "@koinrokka/dsh-sdk-ws-bridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Serve the dsh SDK JSON-RPC protocol over WebSocket with token auth, replacing the stdio server",
   "type": "module",
   "main": "lib/index.js",

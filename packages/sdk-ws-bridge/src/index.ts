@@ -17,10 +17,12 @@ import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol'
 import { HarnessSdkJsonRpcServer } from '@deepseek-ai/dsh-sdk-jsonrpc-server'
 import { WebSocket, WebSocketServer } from 'ws'
 import { resolve } from 'node:path'
+import { ApprovalBroker } from './approval.ts'
 import { handleWorkspaceRequest } from './workspace.ts'
 import { wsToStreams, type WsStreams } from './ws-stream.ts'
 
 export * from './ws-stream.ts'
+export * from './approval.ts'
 
 export const name = 'sdk-ws-bridge'
 // The agent factory is required; `initialize` reads the optional loader seam.
@@ -73,6 +75,27 @@ export function apply(ctx: Context, config: BridgeConfig = {}): void {
   // 工作区根:默认进程 cwd(容器内 /workspace);initialize 可改写
   let workspaceRoot = process.cwd()
 
+  // 审批桥(R2/ADR 0022):把 dsh 的 approval/request 瀑布引到浏览器审批卡。
+  // 超时(默认 120s,env 可配)= unavailable,维持上游 fail-closed 语义。
+  const broker = new ApprovalBroker(Number(process.env.KOINROKKA_APPROVAL_TIMEOUT_MS ?? 120_000))
+  // approval/request 是 dsh-user-approval 对 cordis Events 的 augmentation,
+  // 不在 cordis 核心类型里;与 git-auto 的 session/event 同款守卫式注册
+  const onEvent = (ctx as unknown as {
+    on: (name: 'approval/request', fn: (req: {
+      toolName: string
+      reason?: string
+      signal?: AbortSignal
+    }, next: () => Promise<'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'>)
+      => Promise<'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'>) => unknown
+  }).on
+  onEvent.call(ctx, 'approval/request', async (req) => {
+    const rec = active
+    if (!rec) return 'unavailable' // 无浏览器在看不问人:直接 fail-closed
+    const { pending, outcome } = broker.ask({ toolName: req.toolName, reason: req.reason, signal: req.signal })
+    rec.streams.output.write(JSON.stringify({ jsonrpc: '2.0', method: 'approval/request', params: pending }) + '\n')
+    return outcome
+  })
+
   const settleOf = (record: ActiveConnection): (() => void) => {
     let settled = false
     return (): void => {
@@ -122,6 +145,11 @@ export function apply(ctx: Context, config: BridgeConfig = {}): void {
         // koinrokka workspace surface(Phase 3,ADR 0010):文件树/读页/回合 diff
         if (method.startsWith('workspace/')) {
           return handleWorkspaceRequest(workspaceRoot, method, params)
+        }
+        // 审批卡回执(R2):{id, outcome: allowed-once | rejected}
+        if (method === 'approval/decide') {
+          const ok = broker.decide(String(params?.id), params?.outcome)
+          return { ok }
         }
         const result = await server.handleRequest(method, params)
         if (method === 'shutdown') {
