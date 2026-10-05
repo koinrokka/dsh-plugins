@@ -1,3 +1,7 @@
+> **本仓已归档(2026-10):全部代码与历史已并入 monorepo [koinrokka/koinrokka](https://github.com/koinrokka/koinrokka)(platform/ + runtime/ + plugins/ 三目录,ADR 0027/0032)。此仓只读保留作历史凭证,请勿在此提 issue/PR。**
+>
+> **Archived:** everything here (code + full git history) now lives in the [koinrokka/koinrokka](https://github.com/koinrokka/koinrokka) monorepo. This repository is kept read-only for reference.
+
 # koinrokka/dsh-plugins
 
 koinrokka 的 dsh (DeepSeek Harness) 扩展包集合。架构决策见工作区 `../docs/decisions/`。
